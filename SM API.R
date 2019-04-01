@@ -16,13 +16,15 @@ getSurveyDetails = function(url,surveyID){
   )
   responseText = content(response, "text")
   responseJSON = fromJSON(responseText,flatten = TRUE)
-  surveyDetailsDF <<- as.data.frame(responseJSON)
+  surveyDetailsDF = as.data.frame(responseJSON)
   surveyDetailsUnnested = surveyDetailsDF %>% select(pages.questions) %>% unnest()
   headingData = parseHeadingDetails(surveyDetailsUnnested)
   questionData = parseQuestionDetails(surveyDetailsUnnested)
-  
+  otherData = parseOtherDetails(surveyDetailsUnnested)
+  questionData = left_join(questionData,otherData)
   #keep function or pull up code from that function??
-  buildDetailTable(headingData,questionData)
+  detailTable = buildDetailTable(headingData,questionData)
+  return(detailTable)
 }
 
 getSurveyResponses = function(url,surveyID){
@@ -40,40 +42,49 @@ getSurveyResponses = function(url,surveyID){
 
 #parses through nested Heading column found in Detail view of survey
 parseHeadingDetails = function(df){
-  surveyDetailsHeadingUnnested = surveyDetailsUnnested %>% select(headings,id) %>% unnest() %>% mutate(SurveyID = surveyID)
-  surveyDetailsHeadingUnnested = surveyDetailsHeadingUnnested %>% rename("QuestionID" = id)
-  return(surveyDetailsHeadingUnnested)
+  df = df %>% select(headings,id) %>% unnest() %>% mutate(SurveyID = surveyID)
+  df = df %>% rename("QuestionID" = id)
+  return(df)
 }
 
 #parses through nested Question column found in Detail view of survey
 parseQuestionDetails = function(df){
-  surveyDetailsQuestionsUnnested = surveyDetailsUnnested %>% select(answers.choices,id) %>% filter(answers.choices != "NULL") %>% unnest()
-  surveyDetailsQuestionsUnnested = surveyDetailsQuestionsUnnested %>% rename("QuestionID" = id,"AnswerID" = id1)
-  
+  df = df %>% select(answers.choices,id) %>% filter(answers.choices != "NULL") %>% unnest()
+  df = df %>% rename("QuestionID" = id,"AnswerID" = id1)
+  return(df)
+
+}
+
+parseOtherDetails = function(df){
   #opened ended questions or 'other' which opens up a text entry option for the user.  This doesn't fall under
   #normail columns.  They have their own.  This pulls them into a normal table.
-  for(i in 1:dim(surveyDetailsUnnested)[1]){
-    if(!is.na(surveyDetailsUnnested$answers.other.id[i])){
-      surveyDetailsQuestionsUnnested = add_row(surveyDetailsQuestionsUnnested,QuestionID = surveyDetailsUnnested$id[i], AnswerID = surveyDetailsUnnested$answers.other.id[i], text = surveyDetailsUnnested$answers.other.text[i])
+  tempDF = data.frame("QuestionID"=character(),"OtherID"=character(),"OtherText"=character())
+  for(i in 1:dim(df)[1]){
+    if(!is.na(df$answers.other.id[i])){
+      #surveyDetailsQuestionsUnnested = add_row(surveyDetailsQuestionsUnnested,QuestionID = surveyDetailsUnnested$id[i], AnswerID = surveyDetailsUnnested$answers.other.id[i], text = surveyDetailsUnnested$answers.other.text[i])
+      tempDF = add_row(tempDF,QuestionID = df$id[i], OtherID = df$answers.other.id[i], OtherText = df$answers.other.text[i]) 
     }
   }
-  return(surveyDetailsQuestionsUnnested)
+  return(tempDF)
 }
 
 buildDetailTable = function(df1,df2){
-  detailTable = left_join(surveyDetailsHeadingUnnested,surveyDetailsQuestionsUnnested) %>% select(SurveyID,QuestionID,heading,AnswerID,text) %>%
-    rename("Heading" = heading, "Text" = text)
+  detailTable = left_join(df1,df2) %>% select(SurveyID,QuestionID,heading,AnswerID,text,OtherID,OtherText) %>%
+    rename("Heading" = heading, "AnswerText" = text)
+  return(detailTable)
 }
 
 
-########################################################
-#working test area
-surveyDetailsUnnested = surveyDetailsDF %>% select(pages.questions) %>% unnest()
-surveyDetailsQuestionsUnnested = surveyDetailsUnnested %>% select(answers.choices,id) %>% filter(answers.choices != "NULL") %>% unnest()
-########################################################
+# ########################################################
+# #working test area
+# surveyDetailsUnnested = surveyDetailsDF %>% select(pages.questions) %>% unnest()
+# surveyDetailsQuestionsUnnested = surveyDetailsUnnested %>% select(answers.choices,id) %>% filter(answers.choices != "NULL") %>% unnest()
+surveyResponsesUnnested = surveyResponsesDF %>% select(data.pages) %>% unnest()
+surveyResponsesUnnested = surveyResponsesUnnested %>% select(questions) %>% unnest()
+# ########################################################
 
 #below will be used to actually run the code
-surveyDetailsDF = data.frame()
-surveyResponsesDF = data.frame()
-getSurveyDetails(url,surveyID)
-getSurveyResponses(url,surveyID)
+# surveyDetailsDF = data.frame()
+# surveyResponsesDF = data.frame()
+detailTable = getSurveyDetails(url,surveyID)
+#getSurveyResponses(url,surveyID)
